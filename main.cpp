@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        cout << "Marcel";
+        cout << "Invalid argument";
     }
     return 0;
 }
