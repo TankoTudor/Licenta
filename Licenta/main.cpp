@@ -1,13 +1,15 @@
 #include <iostream>
 #include <Windows.h>
 #include <string>
-#include <atltime.h>
+#include <iomanip>
+#include <algorithm>
 
 using namespace std;
 
 void displayRegistry(HKEY hKey, const string& subKey);
 void verifyCH(char* argv[]);
 void verifyL(char* argv[]);
+bool registryKeyExists(HKEY hKey, const std::string& subKey);
 
 int main(int argc, char* argv[])
 {
@@ -62,21 +64,25 @@ void displayRegistry(HKEY hKey, const string& subKey)
     if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey) == ERROR_SUCCESS)
     {
         // Display subkeys
-        cout << "Subkey:" << endl;
         DWORD subkeyCount, maxSubkeyLen;
         if (RegQueryInfoKey(hSubKey, NULL, NULL, NULL, &subkeyCount, &maxSubkeyLen, NULL, NULL, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
         {
+            cout << "Subkeys: " << subkeyCount << endl;
+            cout << "Values:" << endl;
             for (DWORD i = 0; i < subkeyCount; i++)
             {
                 char subkeyName[256];
                 DWORD subkeyNameLen = sizeof(subkeyName);
                 if (RegEnumKeyExA(hSubKey, i, subkeyName, &subkeyNameLen, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
                 {
-                    cout << "-" << subkeyName << endl;
+                    cout << "--------" << endl;
+                    cout << "Subkey: " << subkeyName << endl;
                     DWORD valueCount, maxValueNameLen, maxValueLen;
                     if (RegQueryInfoKey(hSubKey, NULL, NULL, NULL, NULL, NULL, NULL, &valueCount, &maxValueNameLen, &maxValueLen, NULL, NULL) == ERROR_SUCCESS)
                     {
-                        for (DWORD i = 0; i < valueCount; i++)
+                        cout << "Subkeys: " << subkeyCount << " Values: " << valueCount << endl;
+                        cout << "values:" << endl;
+                        for (DWORD j = 0; j < valueCount; j++) // Changed loop variable to 'j'
                         {
                             char valueName[256];
                             DWORD valueNameLen = sizeof(valueName);
@@ -84,32 +90,38 @@ void displayRegistry(HKEY hKey, const string& subKey)
                             DWORD valueDataLen = maxValueLen;
                             DWORD valueType;
 
-                            if (RegEnumValueA(hSubKey, i, valueName, &valueNameLen, NULL, &valueType, valueData, &valueDataLen) == ERROR_SUCCESS)
+                            if (RegEnumValueA(hSubKey, j, valueName, &valueNameLen, NULL, &valueType, valueData, &valueDataLen) == ERROR_SUCCESS)
                             {
-                                std::cout << "  - Name: " << valueName << std::endl;
-                                std::cout << "    Type: ";
+                                cout << valueName << " ";
                                 switch (valueType)
                                 {
                                 case REG_SZ:
-                                    std::cout << "REG_SZ" << std::endl;
-                                    std::cout << "    Data: " << reinterpret_cast<char*>(valueData) << std::endl;
+                                    cout << "REG_SZ";
                                     break;
                                 case REG_DWORD:
-                                    std::cout << "REG_DWORD" << std::endl;
-                                    std::cout << "    Data: " << *reinterpret_cast<DWORD*>(valueData) << std::endl;
+                                    cout << "REG_DWORD";
+                                    break;
+                                case REG_BINARY:
+                                    cout << "REG_BINARY";
                                     break;
                                 default:
-                                    std::cout << "Unknown" << std::endl;
+                                    cout << "(unknown data type)";
                                     break;
                                 }
+                                cout << " (" << valueDataLen << " B) ";
+                                for (DWORD k = 0; k < valueDataLen; k++)
+                                {
+                                    cout << hex << setw(2) << setfill('0') << static_cast<int>(valueData[k]) << " ";
+                                }
+                                cout << endl;
                             }
                             delete[] valueData;
                         }
                     }
                 }
             }
-            RegCloseKey(hSubKey);
         }
+        RegCloseKey(hSubKey);
     }
 }
 
@@ -194,109 +206,63 @@ void verifyCH(char* argv[])
     if (result == ERROR_SUCCESS)
     {
 
-        // setRegistryValue(verifKey,argv[3],);
+        //setRegistryValue(verifKey,argv[3],);
     }
 }
 
 void verifyL(char* argv[])
 {
     // verificam daca exista registrul ...
-
     HKEY verifKey;
 
     if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
     {
-
         verifKey = HKEY_CLASSES_ROOT;
     }
     else if (strcmp(argv[2], "HKEY_CURRENT_USER") == 0)
     {
-
         verifKey = HKEY_CURRENT_USER;
     }
     else if (strcmp(argv[2], "HKEY_LOCAL_MACHINE") == 0)
     {
-
         verifKey = HKEY_LOCAL_MACHINE;
     }
     else if (strcmp(argv[2], "HKEY_USERS") == 0)
     {
-
         verifKey = HKEY_USERS;
     }
     else if (strcmp(argv[2], "HKEY_CURRENT_CONFIG") == 0)
     {
-
         verifKey = HKEY_CURRENT_CONFIG;
     }
-    // displayRegistry(verifKey, argv[3]);
-    DumpKey(verifKey);
-}
 
-void DumpKey(HKEY hKey)
-{
-    bool dumpKeys = true, bool dumpValues = true, bool recurse = true;
-    DWORD nsubkeys, nvalues;
-    DWORD maxValueSize;
-    DWORD maxValueNameLen;
-    FILETIME modified;
-    if (ERROR_SUCCESS != ::RegQueryInfoKey(hKey, nullptr, nullptr, nullptr,
-        &nsubkeys, nullptr, nullptr, &nvalues, &maxValueNameLen,
-        &maxValueSize, nullptr, &modified))
-        return;
-    printf("Subkeys: %u Values: %u\n", nsubkeys, nvalues);
-    if (dumpValues)
-    {
-        DWORD type;
-        auto value = std::make_unique<BYTE[]>(maxValueSize);
-        auto name = std::make_unique<WCHAR[]>(maxValueNameLen + 1);
-        printf("values:\n");
-        for (DWORD i = 0;; i++)
-        {
-            DWORD cname = maxValueNameLen + 1;
-            DWORD size = maxValueSize;
-            auto error = ::RegEnumValue(hKey, i, name.get(), &cname, nullptr,
-                &type, value.get(), &size);
-            if (error == ERROR_NO_MORE_ITEMS)
-                break;
-            auto display = GetValueAsString(value.get(), min(64, size), type);
-            printf(" %-30ws %-12ws (%5u B) %ws\n", name.get(),
-                (PCWSTR)display.first, size, (PCWSTR)display.second);
-        }
+    if (registryKeyExists(verifKey, argv[3]) == true) {
+        displayRegistry(verifKey, argv[3]);
+    }
+    else {
+        cout << "The registry does not exist";
     }
 }
 
-std::pair<CString, CString>
-GetValueAsString(const BYTE* data, DWORD size, DWORD type)
+bool registryKeyExists(HKEY hKey, const string& subKey)
 {
-    CString value, stype;
-    switch (type)
+    HKEY hSubKey;
+    LONG result = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
+    if (result == ERROR_SUCCESS)
     {
-    case REG_DWORD:
-        stype = L"REG_DWORD";
-        value.Format(L"%u (0x%X)", *(DWORD*)data, *(DWORD*)data);
-        break;
-    case REG_QWORD:
-        stype = L"REG_QWORD";
-        value.Format(L"%llu (0x%llX)", *(DWORD64*)data, *(DWORD64*)data);
-        break;
-    case REG_SZ:
-        stype = L"REG_SZ";
-        value = (PCWSTR)data;
-        break;
-    case REG_EXPAND_SZ:
-        stype = L"REG_EXPAND_SZ";
-        value = (PCWSTR)data;
-        break;
-    case REG_BINARY:
-        stype = L"REG_BINARY";
-        for (DWORD i = 0; i < size; i++)
-            value.Format(L"%s%02X ", value, data[i]);
-        break;
-    default:
-        stype.Format(L"%u", type);
-        value = L"(Unsupported)";
-        break;
+        RegCloseKey(hSubKey);
+        return true; // The key exists
     }
-    return { stype, value };
+    else if (result == ERROR_FILE_NOT_FOUND)
+    {
+        return false; // The key does not exist
+    }
+    else
+    {
+        // Handle other error cases
+        cout << "Error opening registry key: " << result << endl;
+        return false;
+    }
 }
+
+
