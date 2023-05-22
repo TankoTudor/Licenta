@@ -7,9 +7,10 @@
 using namespace std;
 
 void displayRegistry(HKEY hKey, const string& subKey);
+bool registryKeyExists(HKEY hKey, const string& subKey);
 void verifyCH(char* argv[]);
 void verifyL(char* argv[]);
-bool registryKeyExists(HKEY hKey, const std::string& subKey);
+void verifyCRT(char* argv[]);
 
 int main(int argc, char* argv[])
 {
@@ -45,6 +46,17 @@ int main(int argc, char* argv[])
         if (argc == 3)
         {
             verifyCH(argv);
+        }
+        else
+        {
+            cout << "Numar argumente invalid";
+        }
+    }
+    else if (strcmp(argv[1], "-crt") == 0)
+    {
+        if (argc == 6)
+        {
+            verifyCRT(argv);
         }
         else
         {
@@ -170,10 +182,57 @@ bool resetRegistryKey(HKEY hKey, const string& subKey)
     return false;
 }
 
+bool registryKeyExists(HKEY hKey, const string& subKey)
+{
+    HKEY hSubKey;
+    LONG result = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
+    if (result == ERROR_SUCCESS)
+    {
+        RegCloseKey(hSubKey);
+        return true; 
+    }
+    else if (result == ERROR_FILE_NOT_FOUND)
+    {
+        return false; 
+    }
+    else
+    {
+        cout << "Error opening registry key: " << result << endl;
+        return false;
+    }
+}
+
+bool createRegistryKeyWithValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, const string& valueData)
+{
+    HKEY hKeyNew;
+    DWORD dwDisposition;
+    LONG result = RegCreateKeyExA(hKey, subKey.c_str(), 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKeyNew, &dwDisposition);
+    if (result == ERROR_SUCCESS)
+    {
+        result = RegSetValueExA(hKeyNew, valueName.c_str(), 0, valueType, reinterpret_cast<const BYTE*>(valueData.c_str()), static_cast<DWORD>(valueData.length()));
+        if (result == ERROR_SUCCESS)
+        {
+            RegCloseKey(hKeyNew);
+            return true;
+        }
+        else
+        {
+            RegCloseKey(hKeyNew);
+            cout << "Failed to set value in the registry key. Error code: " << result << endl;
+            return false;
+        }
+    }
+    else
+    {
+        cout << "Failed to create registry key. Error code: " << result << endl;
+        return false;
+    }
+}
+
 void verifyCH(char* argv[])
 {
     // verificam daca exista registrul ...
-    HKEY verifKey, verifySubKey;
+    HKEY verifKey;
 
     if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
     {
@@ -201,18 +260,17 @@ void verifyCH(char* argv[])
         verifKey = HKEY_CURRENT_CONFIG;
     }
 
-    LONG result = RegOpenKeyExA(verifKey, argv[3], 0, KEY_READ, &verifySubKey);
-
-    if (result == ERROR_SUCCESS)
-    {
-
-        //setRegistryValue(verifKey,argv[3],);
+    if (registryKeyExists(verifKey, argv[3]) == true) {
+        //const BYTE* valueDataBytes = reinterpret_cast<const BYTE*>(valueData.c_str());
+        //DWORD valueSize = static_cast<DWORD>(valueData.length() + 1);
+    }
+    else {
+        cout << "The registry does not exist";
     }
 }
 
 void verifyL(char* argv[])
 {
-    // verificam daca exista registrul ...
     HKEY verifKey;
 
     if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
@@ -244,25 +302,42 @@ void verifyL(char* argv[])
     }
 }
 
-bool registryKeyExists(HKEY hKey, const string& subKey)
+void verifyCRT(char* argv[]) 
 {
-    HKEY hSubKey;
-    LONG result = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
-    if (result == ERROR_SUCCESS)
+    HKEY verifKey;
+
+    if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
     {
-        RegCloseKey(hSubKey);
-        return true; // The key exists
+
+        verifKey = HKEY_CLASSES_ROOT;
     }
-    else if (result == ERROR_FILE_NOT_FOUND)
+    else if (strcmp(argv[2], "HKEY_CURRENT_USER") == 0)
     {
-        return false; // The key does not exist
+
+        verifKey = HKEY_CURRENT_USER;
     }
-    else
+    else if (strcmp(argv[2], "HKEY_LOCAL_MACHINE") == 0)
     {
-        // Handle other error cases
-        cout << "Error opening registry key: " << result << endl;
-        return false;
+
+        verifKey = HKEY_LOCAL_MACHINE;
+    }
+    else if (strcmp(argv[2], "HKEY_USERS") == 0)
+    {
+
+        verifKey = HKEY_USERS;
+    }
+    else if (strcmp(argv[2], "HKEY_CURRENT_CONFIG") == 0)
+    {
+
+        verifKey = HKEY_CURRENT_CONFIG;
+    }
+    if (registryKeyExists(verifKey, argv[3]) == true) {
+        unsigned long convert = strtoul(argv[5], nullptr, 0);
+        DWORD convertDW = static_cast<DWORD>(convert);
+        createRegistryKeyWithValue(verifKey, argv[3], argv[4], convertDW,argv[6]);
+    }
+    else {
+        cout << "The registry does not exist";
     }
 }
-
 
