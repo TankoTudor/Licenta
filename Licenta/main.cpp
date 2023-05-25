@@ -21,7 +21,7 @@ int main(int argc, char* argv[])
     }
     if (strcmp(argv[1], "-ch") == 0)
     {
-        if (argc == 5)
+        if (argc == 7)
         {
             verifyCH(argv);
         }
@@ -54,7 +54,7 @@ int main(int argc, char* argv[])
     }
     else if (strcmp(argv[1], "-crt") == 0)
     {
-        if (argc == 6)
+        if (argc == 7)
         {
             verifyCRT(argv);
         }
@@ -137,7 +137,7 @@ void displayRegistry(HKEY hKey, const string& subKey)
     }
 }
 
-void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, const BYTE* valueData, DWORD valueSize)
+void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,  BYTE* valueData, DWORD valueSize)
 {
     HKEY hSubKey;
     if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_WRITE, &hSubKey) == ERROR_SUCCESS)
@@ -209,10 +209,33 @@ bool createRegistryKeyWithValue(HKEY hKey, const string& subKey, const string& v
     LONG result = RegCreateKeyExA(hKey, subKey.c_str(), 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKeyNew, &dwDisposition);
     if (result == ERROR_SUCCESS)
     {
-        result = RegSetValueExA(hKeyNew, valueName.c_str(), 0, valueType, reinterpret_cast<const BYTE*>(valueData.c_str()), static_cast<DWORD>(valueData.length()));
+        DWORD dwValueData;
+        
+        if (valueType == REG_DWORD && !valueData.empty())
+        {
+            try
+            {
+                dwValueData = stoul(valueData, nullptr, 0);
+            }
+            catch (const exception& e)
+            {
+                cout << "Failed to convert valueData to DWORD: " << e.what() << endl;
+                RegCloseKey(hKeyNew);
+                return false;
+            }
+        }
+        else
+        {
+            cout << "Invalid value type or data." << endl;
+            RegCloseKey(hKeyNew);
+            return false;
+        }
+
+        result = RegSetValueExA(hKeyNew, valueName.c_str(), 0, valueType, reinterpret_cast<const BYTE*>(&dwValueData), sizeof(dwValueData));
         if (result == ERROR_SUCCESS)
         {
             RegCloseKey(hKeyNew);
+            cout << "Registry key and value created successfully!" << endl;
             return true;
         }
         else
@@ -261,8 +284,7 @@ void verifyCH(char* argv[])
     }
 
     if (registryKeyExists(verifKey, argv[3]) == true) {
-        //const BYTE* valueDataBytes = reinterpret_cast<const BYTE*>(valueData.c_str());
-        //DWORD valueSize = static_cast<DWORD>(valueData.length() + 1);
+        setRegistryValue(verifKey, argv[3], argv[4], (DWORD)argv[5], (BYTE*)argv[6], (DWORD)argv[7]);
     }
     else {
         cout << "The registry does not exist";
@@ -331,13 +353,24 @@ void verifyCRT(char* argv[])
 
         verifKey = HKEY_CURRENT_CONFIG;
     }
-    if (registryKeyExists(verifKey, argv[3]) == true) {
-        unsigned long convert = strtoul(argv[5], nullptr, 0);
-        DWORD convertDW = static_cast<DWORD>(convert);
-        createRegistryKeyWithValue(verifKey, argv[3], argv[4], convertDW,argv[6]);
-    }
     else {
         cout << "The registry does not exist";
     }
-}
 
+    DWORD valueType;
+    if (strcmp(argv[5], "REG_SZ") == 0)
+    {
+        valueType = REG_SZ;
+    }else if (strcmp(argv[5], "REG_DWORD") == 0)
+    {
+        valueType = REG_DWORD;
+    }
+    else if (strcmp(argv[5], "REG_BINARY") == 0)
+    {
+        valueType = REG_BINARY;
+    }
+    if (createRegistryKeyWithValue(verifKey, argv[3], argv[4], valueType, argv[6]))
+    {
+        cout << "Succes!";
+    }
+}
