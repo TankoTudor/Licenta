@@ -75,67 +75,75 @@ void displayRegistry(HKEY hKey, const string& subKey)
     HKEY hSubKey;
     if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey) == ERROR_SUCCESS)
     {
-        // Display subkeys
-        DWORD subkeyCount, maxSubkeyLen;
-        if (RegQueryInfoKey(hSubKey, NULL, NULL, NULL, &subkeyCount, &maxSubkeyLen, NULL, NULL, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
+        DWORD subkeyCount, valueCount;
+        if (RegQueryInfoKey(hSubKey, NULL, NULL, NULL, &subkeyCount, NULL, NULL, &valueCount, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
         {
             cout << "Subkeys: " << subkeyCount << endl;
-            cout << "Values:" << endl;
-            for (DWORD i = 0; i < subkeyCount; i++)
-            {
-                char subkeyName[256];
-                DWORD subkeyNameLen = sizeof(subkeyName);
-                if (RegEnumKeyExA(hSubKey, i, subkeyName, &subkeyNameLen, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
-                {
-                    cout << "--------" << endl;
-                    cout << "Subkey: " << subkeyName << endl;
-                    DWORD valueCount, maxValueNameLen, maxValueLen;
-                    if (RegQueryInfoKey(hSubKey, NULL, NULL, NULL, NULL, NULL, NULL, &valueCount, &maxValueNameLen, &maxValueLen, NULL, NULL) == ERROR_SUCCESS)
-                    {
-                        cout << "Subkeys: " << subkeyCount << " Values: " << valueCount << endl;
-                        cout << "values:" << endl;
-                        for (DWORD j = 0; j < valueCount; j++) // Changed loop variable to 'j'
-                        {
-                            char valueName[256];
-                            DWORD valueNameLen = sizeof(valueName);
-                            BYTE* valueData = new BYTE[maxValueLen];
-                            DWORD valueDataLen = maxValueLen;
-                            DWORD valueType;
+            cout << "Values: " << valueCount << endl;
+            cout << "--------" << endl;
 
-                            if (RegEnumValueA(hSubKey, j, valueName, &valueNameLen, NULL, &valueType, valueData, &valueDataLen) == ERROR_SUCCESS)
-                            {
-                                cout << valueName << " ";
-                                switch (valueType)
-                                {
-                                case REG_SZ:
-                                    cout << "REG_SZ";
-                                    break;
-                                case REG_DWORD:
-                                    cout << "REG_DWORD";
-                                    break;
-                                case REG_BINARY:
-                                    cout << "REG_BINARY";
-                                    break;
-                                default:
-                                    cout << "(unknown data type)";
-                                    break;
-                                }
-                                cout << " (" << valueDataLen << " B) ";
-                                for (DWORD k = 0; k < valueDataLen; k++)
-                                {
-                                    cout << hex << setw(2) << setfill('0') << static_cast<int>(valueData[k]) << " ";
-                                }
-                                cout << endl;
-                            }
-                            delete[] valueData;
+            for (DWORD i = 0; i < valueCount; i++)
+            {
+                char valueName[256];
+                DWORD valueNameLen = sizeof(valueName);
+                BYTE valueData[4096];
+                DWORD valueDataLen = sizeof(valueData);
+                DWORD valueType;
+
+                if (RegEnumValueA(hSubKey, i, valueName, &valueNameLen, NULL, &valueType, valueData, &valueDataLen) == ERROR_SUCCESS)
+                {
+                    cout << "Value Name: " << valueName << endl;
+                    cout << "Value Type: ";
+
+                    switch (valueType)
+                    {
+                    case REG_SZ:
+                        cout << "REG_SZ";
+                        break;
+                    case REG_DWORD:
+                        cout << "REG_DWORD";
+                        break;
+                    case REG_BINARY:
+                        cout << "REG_BINARY";
+                        break;
+                    default:
+                        cout << "(unknown data type)";
+                        break;
+                    }
+
+                    cout << endl;
+                    cout << "Value Data: ";
+
+                    if (valueType == REG_SZ)
+                    {
+                        cout << reinterpret_cast<const char*>(valueData);
+                    }
+                    else if (valueType == REG_DWORD)
+                    {
+                        DWORD* dwordValue = reinterpret_cast<DWORD*>(valueData);
+                        cout << *dwordValue;
+                    }
+                    else if (valueType == REG_BINARY)
+                    {
+                        for (DWORD j = 0; j < valueDataLen; j++)
+                        {
+                            cout << hex << setw(2) << setfill('0') << static_cast<int>(valueData[j]) << " ";
                         }
                     }
+
+                    cout << endl << "--------" << endl;
                 }
             }
         }
+
         RegCloseKey(hSubKey);
     }
+    else
+    {
+        cout << "Failed to open registry subkey." << endl;
+    }
 }
+
 
 void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,  BYTE* valueData, DWORD valueSize)
 {
@@ -163,7 +171,7 @@ bool resetRegistryKey(HKEY hKey, const string& subKey)
     HKEY hSubKey;
     if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_ALL_ACCESS, &hSubKey) == ERROR_SUCCESS)
     {
-        LONG result = RegRestoreKeyA(hSubKey, NULL, REG_REFRESH_HIVE);
+        LONG result = RegRestoreKeyA(hSubKey, nullptr, REG_REFRESH_HIVE);
         if (result == ERROR_SUCCESS)
         {
             RegCloseKey(hSubKey);
