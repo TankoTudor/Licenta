@@ -1,16 +1,24 @@
-#include <iostream>
+﻿#include <iostream>
 #include <Windows.h>
 #include <string>
 #include <iomanip>
 #include <algorithm>
+#include <fstream>
+#include <vector>
+#include <omp.h>
 
 using namespace std;
 
-void displayRegistry(HKEY hKey, const string& subKey);
+void displayRegistry(HKEY hKey, const string& subKey, int level);
+void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, BYTE* valueData, DWORD valueSize);
 bool registryKeyExists(HKEY hKey, const string& subKey);
+bool resetRegistryKey(HKEY hKey, const string& subKey);
+bool createRegistryKeyWithValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, const string& valueData);
+string readFile(const string& fileName);
 void verifyCH(char* argv[]);
 void verifyL(char* argv[]);
 void verifyCRT(char* argv[]);
+void PrintIndent(int level);
 
 int main(int argc, char* argv[])
 {
@@ -63,6 +71,24 @@ int main(int argc, char* argv[])
             cout << "Numar argumente invalid";
         }
     }
+    else if (strcmp(argv[1], "-help") == 0)
+    {
+        if (argc == 2)
+        {
+            string fileName = "Help.txt";
+            string fileContent = readFile(fileName);
+
+            if (!fileContent.empty())
+            {
+                cout << fileContent;
+            }
+            return 0;
+        }
+        else
+        {
+            cout << "File doesn't exist!";
+        }
+    }
     else
     {
         cout << "Invalid argument";
@@ -70,80 +96,170 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-void displayRegistry(HKEY hKey, const string& subKey)
+void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
 {
+    // Open the registry key
     HKEY hSubKey;
-    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey) == ERROR_SUCCESS)
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey) != ERROR_SUCCESS)
     {
-        DWORD subkeyCount, valueCount;
-        if (RegQueryInfoKey(hSubKey, NULL, NULL, NULL, &subkeyCount, NULL, NULL, &valueCount, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
+        std::cerr << "Error opening registry key!" << std::endl;
+        return;
+    }
+
+    DWORD subkeyCount;
+    DWORD valueCount;
+    DWORD maxValueNameLength;
+    DWORD maxValueDataLength;
+
+    // Get information about the registry key
+    if (RegQueryInfoKeyA(hSubKey, NULL, NULL, NULL, &subkeyCount, NULL, NULL, &valueCount, &maxValueNameLength, &maxValueDataLength, NULL, NULL) != ERROR_SUCCESS)
+    {
+        std::cerr << "Error retrieving key information!" << std::endl;
+        RegCloseKey(hSubKey);
+        return;
+    }
+
+    // Allocate buffers for value names and value data
+    char* valueName = new char[maxValueNameLength + 1];
+    BYTE* valueData = new BYTE[maxValueDataLength];
+    DWORD valueNameLength;
+    DWORD valueDataLength;
+    DWORD valueType;
+
+    PrintIndent(level);
+    std::cout << "Subkey: " << subKey << std::endl;
+    PrintIndent(level);
+    std::cout << "Subkeys: " << subkeyCount << " Values: " << valueCount << std::endl;
+
+    // Iterate over each value in the registry key
+    for (DWORD i = 0; i < valueCount; i++)
+    {
+        valueNameLength = maxValueNameLength + 1;
+        valueDataLength = maxValueDataLength;
+
+        // Get the name and data of the value
+        if (RegEnumValueA(hSubKey, i, valueName, &valueNameLength, NULL, &valueType, valueData, &valueDataLength) != ERROR_SUCCESS)
         {
-            cout << "Subkeys: " << subkeyCount << endl;
-            cout << "Values: " << valueCount << endl;
-            cout << "--------" << endl;
-
-            for (DWORD i = 0; i < valueCount; i++)
-            {
-                char valueName[256];
-                DWORD valueNameLen = sizeof(valueName);
-                BYTE valueData[4096];
-                DWORD valueDataLen = sizeof(valueData);
-                DWORD valueType;
-
-                if (RegEnumValueA(hSubKey, i, valueName, &valueNameLen, NULL, &valueType, valueData, &valueDataLen) == ERROR_SUCCESS)
-                {
-                    cout << "Value Name: " << valueName << endl;
-                    cout << "Value Type: ";
-
-                    switch (valueType)
-                    {
-                    case REG_SZ:
-                        cout << "REG_SZ";
-                        break;
-                    case REG_DWORD:
-                        cout << "REG_DWORD";
-                        break;
-                    case REG_BINARY:
-                        cout << "REG_BINARY";
-                        break;
-                    default:
-                        cout << "(unknown data type)";
-                        break;
-                    }
-
-                    cout << endl;
-                    cout << "Value Data: ";
-
-                    if (valueType == REG_SZ)
-                    {
-                        cout << reinterpret_cast<const char*>(valueData);
-                    }
-                    else if (valueType == REG_DWORD)
-                    {
-                        DWORD* dwordValue = reinterpret_cast<DWORD*>(valueData);
-                        cout << *dwordValue;
-                    }
-                    else if (valueType == REG_BINARY)
-                    {
-                        for (DWORD j = 0; j < valueDataLen; j++)
-                        {
-                            cout << hex << setw(2) << setfill('0') << static_cast<int>(valueData[j]) << " ";
-                        }
-                    }
-
-                    cout << endl << "--------" << endl;
-                }
-            }
+            std::cerr << "Error retrieving value with index " << i << "!" << std::endl;
+            continue;
         }
 
-        RegCloseKey(hSubKey);
-    }
-    else
-    {
-        cout << "Failed to open registry subkey." << endl;
-    }
-}
+        std::string valueNameStr(valueName);
+        std::string valueDataStr;
 
+        // Convert the value type to the corresponding string
+        std::string valueTypeStr;
+        switch (valueType)
+        {
+        case REG_DWORD:
+            valueTypeStr = "REG_DWORD";
+            break;
+        case REG_QWORD:
+            valueTypeStr = "REG_QWORD";
+            break;
+        case REG_SZ:
+            valueTypeStr = "REG_SZ";
+            break;
+        case REG_EXPAND_SZ:
+            valueTypeStr = "REG_EXPAND_SZ";
+            break;
+        case REG_BINARY:
+            valueTypeStr = "REG_BINARY";
+            break;
+        default:
+            valueTypeStr = "Unknown Type";
+            break;
+        }
+
+        PrintIndent(level);
+        std::cout << "---------------------------------------------------" << std::endl;
+        PrintIndent(level);
+        std::cout << "Value Name: " << valueNameStr << std::endl;
+        PrintIndent(level);
+        std::cout << "Value Type: " << valueTypeStr << std::endl;
+
+        // Display values based on their type
+        if (valueType == REG_DWORD)
+        {
+            DWORD value = *reinterpret_cast<DWORD*>(valueData);
+            PrintIndent(level);
+            std::cout << "Value: " << value << " (0x" << std::hex << value << ")" << std::endl;
+            PrintIndent(level);
+            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            for (DWORD j = 0; j < valueDataLength; j++)
+            {
+                printf("%02X ", valueData[j]);
+            }
+            std::cout << std::endl;
+        }
+        else if (valueType == REG_QWORD)
+        {
+            DWORDLONG value = *reinterpret_cast<DWORDLONG*>(valueData);
+            PrintIndent(level);
+            std::cout << "Value: " << value << std::endl;
+            PrintIndent(level);
+            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            for (DWORD j = 0; j < valueDataLength; j++)
+            {
+                printf("%02X ", valueData[j]);
+            }
+            std::cout << std::endl;
+        }
+        else if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
+        {
+            valueDataStr = std::string(reinterpret_cast<const char*>(valueData));
+            PrintIndent(level);
+            std::cout << "Value: " << valueDataStr << std::endl;
+            PrintIndent(level);
+            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            for (DWORD j = 0; j < valueDataLength; j++)
+            {
+                printf("%02X ", valueData[j]);
+            }
+            std::cout << std::endl;
+        }
+        else if (valueType == REG_BINARY)
+        {
+            PrintIndent(level);
+            std::cout << "Value: ";
+            for (DWORD j = 0; j < valueDataLength; j++)
+            {
+                printf("%02X ", valueData[j]);
+            }
+            std::cout << std::endl;
+            PrintIndent(level);
+            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            for (DWORD j = 0; j < valueDataLength; j++)
+            {
+                printf("%02X ", valueData[j]);
+            }
+            std::cout << std::endl;
+        }
+        else
+        {
+            PrintIndent(level);
+            std::cout << "Value: N/A" << std::endl;
+            PrintIndent(level);
+            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            for (DWORD j = 0; j < valueDataLength; j++)
+            {
+                printf("%02X ", valueData[j]);
+            }
+            std::cout << std::endl;
+        }
+
+        if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
+        {
+            std::string nextSubKey = subKey + "\\" + valueDataStr;
+            displayRegistry(hKey, nextSubKey, level + 1);
+        }
+    }
+
+    delete[] valueName;
+    delete[] valueData;
+    RegCloseKey(hSubKey);
+
+}
 
 void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,  BYTE* valueData, DWORD valueSize)
 {
@@ -260,9 +376,30 @@ bool createRegistryKeyWithValue(HKEY hKey, const string& subKey, const string& v
     }
 }
 
+string readFile(const string& fileName)
+{
+    ifstream inputFile(fileName);
+    string fileContent;
+
+    if (inputFile.is_open())
+    {
+        string line;
+        while (getline(inputFile, line))
+        {
+            fileContent += line + "\n";
+        }
+        inputFile.close();
+    }
+    else
+    {
+        cout << "Failed to open the file: " << fileName << endl;
+    }
+
+    return fileContent;
+}
+
 void verifyCH(char* argv[])
 {
-    // verificam daca exista registrul ...
     HKEY verifKey;
 
     if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
@@ -380,5 +517,13 @@ void verifyCRT(char* argv[])
     if (createRegistryKeyWithValue(verifKey, argv[3], argv[4], valueType, argv[6]))
     {
         cout << "Succes!";
+    }
+}
+
+void PrintIndent(int level)
+{
+    for (int i = 0; i < level; i++)
+    {
+        std::cout << "\t";
     }
 }
