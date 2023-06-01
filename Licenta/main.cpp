@@ -10,9 +10,9 @@
 using namespace std;
 
 void displayRegistry(HKEY hKey, const string& subKey, int level);
-void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, BYTE* valueData, DWORD valueSize);
+bool setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, BYTE* valueData, DWORD valueDataSize);
 bool registryKeyExists(HKEY hKey, const string& subKey);
-bool resetRegistryKey(HKEY hKey, const string& subKey);
+bool resetRegistryKey(HKEY hKey, const string& subKey, const string& valueName);
 bool createRegistryKeyWithValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, const string& valueData);
 string readFile(const string& fileName);
 void verifyCH(char* argv[]);
@@ -102,7 +102,7 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
     HKEY hSubKey;
     if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey) != ERROR_SUCCESS)
     {
-        std::cerr << "Error opening registry key!" << std::endl;
+        cerr << "Error opening registry key!" << endl;
         return;
     }
 
@@ -114,7 +114,7 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
     // Get information about the registry key
     if (RegQueryInfoKeyA(hSubKey, NULL, NULL, NULL, &subkeyCount, NULL, NULL, &valueCount, &maxValueNameLength, &maxValueDataLength, NULL, NULL) != ERROR_SUCCESS)
     {
-        std::cerr << "Error retrieving key information!" << std::endl;
+        cerr << "Error retrieving key information!" << endl;
         RegCloseKey(hSubKey);
         return;
     }
@@ -127,9 +127,9 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
     DWORD valueType;
 
     PrintIndent(level);
-    std::cout << "Subkey: " << subKey << std::endl;
+    cout << "Subkey: " << subKey << endl;
     PrintIndent(level);
-    std::cout << "Subkeys: " << subkeyCount << " Values: " << valueCount << std::endl;
+    cout << "Subkeys: " << subkeyCount << " Values: " << valueCount << endl;
 
     // Iterate over each value in the registry key
     for (DWORD i = 0; i < valueCount; i++)
@@ -140,15 +140,15 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
         // Get the name and data of the value
         if (RegEnumValueA(hSubKey, i, valueName, &valueNameLength, NULL, &valueType, valueData, &valueDataLength) != ERROR_SUCCESS)
         {
-            std::cerr << "Error retrieving value with index " << i << "!" << std::endl;
+            cerr << "Error retrieving value with index " << i << "!" << endl;
             continue;
         }
 
-        std::string valueNameStr(valueName);
-        std::string valueDataStr;
+        string valueNameStr(valueName);
+        string valueDataStr;
 
         // Convert the value type to the corresponding string
-        std::string valueTypeStr;
+        string valueTypeStr;
         switch (valueType)
         {
         case REG_DWORD:
@@ -172,85 +172,85 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
         }
 
         PrintIndent(level);
-        std::cout << "---------------------------------------------------" << std::endl;
+        cout << "---------------------------------------------------" << endl;
         PrintIndent(level);
-        std::cout << "Value Name: " << valueNameStr << std::endl;
+        cout << "Value Name: " << valueNameStr << endl;
         PrintIndent(level);
-        std::cout << "Value Type: " << valueTypeStr << std::endl;
+        cout << "Value Type: " << valueTypeStr << endl;
 
         // Display values based on their type
         if (valueType == REG_DWORD)
         {
             DWORD value = *reinterpret_cast<DWORD*>(valueData);
             PrintIndent(level);
-            std::cout << "Value: " << value << " (0x" << std::hex << value << ")" << std::endl;
+            cout << "Value: " << value << " (0x" << std::hex << value << ")" << endl;
             PrintIndent(level);
-            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            cout << "Space Occupied: " << valueDataLength << " B) ";
             for (DWORD j = 0; j < valueDataLength; j++)
             {
                 printf("%02X ", valueData[j]);
             }
-            std::cout << std::endl;
+            cout << endl;
         }
         else if (valueType == REG_QWORD)
         {
             DWORDLONG value = *reinterpret_cast<DWORDLONG*>(valueData);
             PrintIndent(level);
-            std::cout << "Value: " << value << std::endl;
+            cout << "Value: " << value << endl;
             PrintIndent(level);
-            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            cout << "Space Occupied: " << valueDataLength << " B) ";
             for (DWORD j = 0; j < valueDataLength; j++)
             {
                 printf("%02X ", valueData[j]);
             }
-            std::cout << std::endl;
+            cout << endl;
         }
         else if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
         {
             valueDataStr = std::string(reinterpret_cast<const char*>(valueData));
             PrintIndent(level);
-            std::cout << "Value: " << valueDataStr << std::endl;
+            cout << "Value: " << valueDataStr << endl;
             PrintIndent(level);
-            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            cout << "Space Occupied: " << valueDataLength << " B) ";
             for (DWORD j = 0; j < valueDataLength; j++)
             {
                 printf("%02X ", valueData[j]);
             }
-            std::cout << std::endl;
+            cout << endl;
         }
         else if (valueType == REG_BINARY)
         {
             PrintIndent(level);
-            std::cout << "Value: ";
+            cout << "Value: ";
             for (DWORD j = 0; j < valueDataLength; j++)
             {
                 printf("%02X ", valueData[j]);
             }
-            std::cout << std::endl;
+            cout << endl;
             PrintIndent(level);
-            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            cout << "Space Occupied: " << valueDataLength << " B) ";
             for (DWORD j = 0; j < valueDataLength; j++)
             {
                 printf("%02X ", valueData[j]);
             }
-            std::cout << std::endl;
+            cout << endl;
         }
         else
         {
             PrintIndent(level);
-            std::cout << "Value: N/A" << std::endl;
+            cout << "Value: N/A" << endl;
             PrintIndent(level);
-            std::cout << "Space Occupied: " << valueDataLength << " B) ";
+            cout << "Space Occupied: " << valueDataLength << " B) ";
             for (DWORD j = 0; j < valueDataLength; j++)
             {
                 printf("%02X ", valueData[j]);
             }
-            std::cout << std::endl;
+            cout << endl;
         }
 
         if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
         {
-            std::string nextSubKey = subKey + "\\" + valueDataStr;
+            string nextSubKey = subKey + "\\" + valueDataStr;
             displayRegistry(hKey, nextSubKey, level + 1);
         }
     }
@@ -261,49 +261,81 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
 
 }
 
-void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,  BYTE* valueData, DWORD valueSize)
+bool setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,  BYTE* valueData, DWORD valueDataSize)
 {
+    // Open the registry key for modification
     HKEY hSubKey;
-    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_WRITE, &hSubKey) == ERROR_SUCCESS)
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE, &hSubKey) != ERROR_SUCCESS)
     {
-        if (RegSetValueExA(hSubKey, valueName.c_str(), 0, valueType, valueData, valueSize) == ERROR_SUCCESS)
-        {
-            RegCloseKey(hSubKey);
-        }
-        else
-        {
-            cout << "Failed to set registry value" << endl;
-        }
+        cerr << "Error opening registry key for modification!" << endl;
+        return false;
+    }
+
+    // Modify the value in the registry key
+    if (RegSetValueExA(hSubKey, valueName.c_str(), 0, valueType, valueData, valueDataSize) != ERROR_SUCCESS)
+    {
+        cerr << "Error modifying registry value!" << endl;
         RegCloseKey(hSubKey);
+        return false;
     }
-    else
-    {
-        cout << "Failed to open registry key" << endl;
-    }
+
+    cout << "Value modified successfully!" << endl;
+
+    // Close the registry key
+    RegCloseKey(hSubKey);
+
+    return true;
 }
 
-bool resetRegistryKey(HKEY hKey, const string& subKey)
+bool resetRegistryKey(HKEY hKey, const string& subKey, const string& valueName = "")
 {
+    // Open the registry key for resetting
     HKEY hSubKey;
-    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_ALL_ACCESS, &hSubKey) == ERROR_SUCCESS)
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE, &hSubKey) != ERROR_SUCCESS)
     {
-        LONG result = RegRestoreKeyA(hSubKey, nullptr, REG_REFRESH_HIVE);
-        if (result == ERROR_SUCCESS)
-        {
-            RegCloseKey(hSubKey);
-            return true;
-        }
-        else
-        {
-            cout << "Failed to reset registry key: " << result << endl;
-        }
-        RegCloseKey(hSubKey);
+        cerr << "Error opening registry key for resetting!" << endl;
+        return false;
     }
+
+    // Reset a specific value
+    if (!valueName.empty())
+    {
+        if (RegDeleteValueA(hSubKey, valueName.c_str()) != ERROR_SUCCESS)
+        {
+            cerr << "Error resetting registry value!" << endl;
+            RegCloseKey(hSubKey);
+            return false;
+        }
+    }
+    // Reset all values within the subkey
     else
     {
-        cout << "Failed to open registry key" << endl;
+        DWORD valueIndex = 0;
+        char valueNameBuffer[256];
+        DWORD valueNameSize = sizeof(valueNameBuffer);
+
+        // Enumerate all values and delete them
+        while (RegEnumValueA(hSubKey, valueIndex, valueNameBuffer, &valueNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
+        {
+            if (RegDeleteValueA(hSubKey, valueNameBuffer) != ERROR_SUCCESS)
+            {
+                cerr << "Error resetting registry value!" << endl;
+                RegCloseKey(hSubKey);
+                return false;
+            }
+
+            // Reset value index and buffer size for next iteration
+            valueIndex++;
+            valueNameSize = sizeof(valueNameBuffer);
+        }
     }
-    return false;
+
+    cout << "Registry value(s) reset successfully!" << endl;
+
+    // Close the registry key
+    RegCloseKey(hSubKey);
+
+    return true;
 }
 
 bool registryKeyExists(HKEY hKey, const string& subKey)
