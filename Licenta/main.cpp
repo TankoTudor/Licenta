@@ -19,6 +19,7 @@ void verifyCH(char* argv[]);
 void verifyL(char* argv[]);
 void verifyCRT(char* argv[]);
 void PrintIndent(int level);
+string ValueTypeToString(DWORD valueType);
 
 int main(int argc, char* argv[])
 {
@@ -100,17 +101,10 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
 {
     // Open the registry key
     HKEY hSubKey;
-
     DWORD errorCode = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
     if (errorCode != ERROR_SUCCESS)
     {
         cerr << "Error opening registry key! Error code: " << errorCode << endl;
-        return;
-    }
-
-    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey) != ERROR_SUCCESS)
-    {
-        cerr << "Error opening registry key!" << endl;
         return;
     }
 
@@ -134,140 +128,203 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
     DWORD valueDataLength;
     DWORD valueType;
 
-    PrintIndent(level);
     cout << "Subkey: " << subKey << endl;
-    PrintIndent(level);
     cout << "Subkeys: " << subkeyCount << " Values: " << valueCount << endl;
 
-    // Iterate over each value in the registry key
-    for (DWORD i = 0; i < valueCount; i++)
+    if (subkeyCount > 0)
     {
-        valueNameLength = maxValueNameLength + 1;
-        valueDataLength = maxValueDataLength;
-
-        // Get the name and data of the value
-        if (RegEnumValueA(hSubKey, i, valueName, &valueNameLength, NULL, &valueType, valueData, &valueDataLength) != ERROR_SUCCESS)
-        {
-            cerr << "Error retrieving value with index " << i << "!" << endl;
-            continue;
-        }
-
-        string valueNameStr(valueName);
-        string valueDataStr;
-
-        // Convert the value type to the corresponding string
-        string valueTypeStr;
-        switch (valueType)
-        {
-        case REG_DWORD:
-            valueTypeStr = "REG_DWORD";
-            break;
-        case REG_QWORD:
-            valueTypeStr = "REG_QWORD";
-            break;
-        case REG_SZ:
-            valueTypeStr = "REG_SZ";
-            break;
-        case REG_EXPAND_SZ:
-            valueTypeStr = "REG_EXPAND_SZ";
-            break;
-        case REG_BINARY:
-            valueTypeStr = "REG_BINARY";
-            break;
-        default:
-            valueTypeStr = "Unknown Type";
-            break;
-        }
-
-        PrintIndent(level);
         cout << "---------------------------------------------------" << endl;
-        PrintIndent(level);
-        cout << "Value Name: " << valueNameStr << endl;
-        PrintIndent(level);
-        cout << "Value Type: " << valueTypeStr << endl;
+        cout << "Subkeys:" << endl;
 
-        // Display values based on their type
-        if (valueType == REG_DWORD)
+        // Iterate over each subkey in the registry key
+        for (DWORD i = 0; i < subkeyCount; i++)
         {
-            DWORD value = *reinterpret_cast<DWORD*>(valueData);
-            PrintIndent(level);
-            cout << "Value: " << value << " (0x" << hex << value << ")" << endl;
-            PrintIndent(level);
-            cout << "Space Occupied: " << valueDataLength << " B) ";
-            for (DWORD j = 0; j < valueDataLength; j++)
-            {
-                printf("%02X ", valueData[j]);
-            }
-            cout << endl;
-        }
-        else if (valueType == REG_QWORD)
-        {
-            DWORDLONG value = *reinterpret_cast<DWORDLONG*>(valueData);
-            PrintIndent(level);
-            cout << "Value: " << value << endl;
-            PrintIndent(level);
-            cout << "Space Occupied: " << valueDataLength << " B) ";
-            for (DWORD j = 0; j < valueDataLength; j++)
-            {
-                printf("%02X ", valueData[j]);
-            }
-            cout << endl;
-        }
-        else if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
-        {
-            valueDataStr = string(reinterpret_cast<const char*>(valueData));
-            PrintIndent(level);
-            cout << "Value: " << valueDataStr << endl;
-            PrintIndent(level);
-            cout << "Space Occupied: " << valueDataLength << " B) ";
-            for (DWORD j = 0; j < valueDataLength; j++)
-            {
-                printf("%02X ", valueData[j]);
-            }
-            cout << endl;
-        }
-        else if (valueType == REG_BINARY)
-        {
-            PrintIndent(level);
-            cout << "Value: ";
-            for (DWORD j = 0; j < valueDataLength; j++)
-            {
-                printf("%02X ", valueData[j]);
-            }
-            cout << endl;
-            PrintIndent(level);
-            cout << "Space Occupied: " << valueDataLength << " B) ";
-            for (DWORD j = 0; j < valueDataLength; j++)
-            {
-                printf("%02X ", valueData[j]);
-            }
-            cout << endl;
-        }
-        else
-        {
-            PrintIndent(level);
-            cout << "Value: N/A" << endl;
-            PrintIndent(level);
-            cout << "Space Occupied: " << valueDataLength << " B) ";
-            for (DWORD j = 0; j < valueDataLength; j++)
-            {
-                printf("%02X ", valueData[j]);
-            }
-            cout << endl;
-        }
+            valueNameLength = maxValueNameLength + 1;
 
-        if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
-        {
-            string nextSubKey = subKey + "\\" + valueDataStr;
+            // Get the name of the subkey
+            if (RegEnumKeyExA(hSubKey, i, valueName, &valueNameLength, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+            {
+                cerr << "Error retrieving subkey with index " << i << "!" << endl;
+                continue;
+            }
+
+            string subkeyName(valueName);
+            string nextSubKey = subKey + "\\" + subkeyName;
             displayRegistry(hKey, nextSubKey, level + 1);
+        }
+    }
+    else if (subkeyCount == 0)
+    {
+        cout << "---------------------------------------------------" << endl;
+        cout << "Subkeys: 0" << endl;
+
+        cout << "Values:" << endl;
+
+        // Iterate over each value in the registry key
+        for (DWORD i = 0; i < valueCount; i++)
+        {
+            valueNameLength = maxValueNameLength + 1;
+            valueDataLength = maxValueDataLength;
+
+            // Get the name and data of the value
+            if (RegEnumValueA(hSubKey, i, valueName, &valueNameLength, NULL, &valueType, valueData, &valueDataLength) != ERROR_SUCCESS)
+            {
+                cerr << "Error retrieving value with index " << i << "!" << endl;
+                continue;
+            }
+
+            string valueNameStr(valueName);
+            string valueDataStr;
+
+            // Convert the value type to the corresponding string
+            string valueTypeStr = ValueTypeToString(valueType);
+
+            PrintIndent(level + 1);
+            cout << valueNameStr;
+            PrintIndent(level + 3);
+            cout << valueTypeStr;
+
+            // Display value data based on its type
+            if (valueType == REG_DWORD)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else if (valueType == REG_QWORD)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else if (valueType == REG_BINARY)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+        }
+    }
+    else if (valueCount > 0)
+    {
+        cout << "---------------------------------------------------" << endl;
+        cout << "Values:" << endl;
+
+        // Iterate over each value in the registry key
+        for (DWORD i = 0; i < valueCount; i++)
+        {
+            valueNameLength = maxValueNameLength + 1;
+            valueDataLength = maxValueDataLength;
+
+            // Get the name and data of the value
+            if (RegEnumValueA(hSubKey, i, valueName, &valueNameLength, NULL, &valueType, valueData, &valueDataLength) != ERROR_SUCCESS)
+            {
+                cerr << "Error retrieving value with index " << i << "!" << endl;
+                continue;
+            }
+
+            string valueNameStr(valueName);
+            string valueDataStr;
+
+            // Convert the value type to the corresponding string
+            string valueTypeStr = ValueTypeToString(valueType);
+
+            PrintIndent(level + 1);
+            cout << valueNameStr;
+            PrintIndent(level + 3);
+            cout << valueTypeStr;
+
+            // Display value data based on its type
+            if (valueType == REG_DWORD)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else if (valueType == REG_QWORD)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else if (valueType == REG_BINARY)
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
+            else
+            {
+                PrintIndent(level + 5);
+                cout << "(   " << valueDataLength << " B) ";
+                for (DWORD j = 0; j < valueDataLength; j++)
+                {
+                    printf("%02X ", valueData[j]);
+                }
+                cout << endl;
+            }
         }
     }
 
     delete[] valueName;
     delete[] valueData;
     RegCloseKey(hSubKey);
-
 }
+
 
 bool setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,  BYTE* valueData, DWORD valueDataSize)
 {
@@ -564,6 +621,39 @@ void PrintIndent(int level)
 {
     for (int i = 0; i < level; i++)
     {
-        cout << "\t";
+        cout << "  ";
+    }
+}
+
+string ValueTypeToString(DWORD valueType)
+{
+    switch (valueType)
+    {
+    case REG_NONE:
+        return "REG_NONE";
+    case REG_SZ:
+        return "REG_SZ";
+    case REG_EXPAND_SZ:
+        return "REG_EXPAND_SZ";
+    case REG_BINARY:
+        return "REG_BINARY";
+    case REG_DWORD:
+        return "REG_DWORD";
+    case REG_DWORD_BIG_ENDIAN:
+        return "REG_DWORD_BIG_ENDIAN";
+    case REG_LINK:
+        return "REG_LINK";
+    case REG_MULTI_SZ:
+        return "REG_MULTI_SZ";
+    case REG_RESOURCE_LIST:
+        return "REG_RESOURCE_LIST";
+    case REG_FULL_RESOURCE_DESCRIPTOR:
+        return "REG_FULL_RESOURCE_DESCRIPTOR";
+    case REG_RESOURCE_REQUIREMENTS_LIST:
+        return "REG_RESOURCE_REQUIREMENTS_LIST";
+    case REG_QWORD:
+        return "REG_QWORD";
+    default:
+        return "Unknown Type";
     }
 }
