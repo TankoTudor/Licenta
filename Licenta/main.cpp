@@ -100,6 +100,14 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
 {
     // Open the registry key
     HKEY hSubKey;
+
+    DWORD errorCode = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
+    if (errorCode != ERROR_SUCCESS)
+    {
+        cerr << "Error opening registry key! Error code: " << errorCode << endl;
+        return;
+    }
+
     if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey) != ERROR_SUCCESS)
     {
         cerr << "Error opening registry key!" << endl;
@@ -183,7 +191,7 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
         {
             DWORD value = *reinterpret_cast<DWORD*>(valueData);
             PrintIndent(level);
-            cout << "Value: " << value << " (0x" << std::hex << value << ")" << endl;
+            cout << "Value: " << value << " (0x" << hex << value << ")" << endl;
             PrintIndent(level);
             cout << "Space Occupied: " << valueDataLength << " B) ";
             for (DWORD j = 0; j < valueDataLength; j++)
@@ -207,7 +215,7 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
         }
         else if (valueType == REG_SZ || valueType == REG_EXPAND_SZ)
         {
-            valueDataStr = std::string(reinterpret_cast<const char*>(valueData));
+            valueDataStr = string(reinterpret_cast<const char*>(valueData));
             PrintIndent(level);
             cout << "Value: " << valueDataStr << endl;
             PrintIndent(level);
@@ -556,6 +564,6 @@ void PrintIndent(int level)
 {
     for (int i = 0; i < level; i++)
     {
-        std::cout << "\t";
+        cout << "\t";
     }
 }
