@@ -19,16 +19,19 @@ using namespace std;
 #define KEY_WOW64_64KEY 0x0100
 #endif
 
-void displayRegistry(HKEY hKey, const string& subKey, int level);
+void displayKeysAndvalues(HKEY hKey, const string& subKey, int level);
 void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, BYTE* valueData, DWORD valueDataSize);
 bool registryKeyExists(HKEY hKey, const string& subKey);
-bool resetRegistryKey(HKEY hKey, const string& subKey, const string& valueName);
 void createRegistryKey(HKEY hKey, const string& subKey);
 void createRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, const string& valueData);
+void deleteRegistryKey(HKEY hKey, const string& subKey);
+void deleteRegistryValue(HKEY hKey, const string& subKey, const string& valueName);
 void verifyL(char* argv[]);
 void verifyCRTKey(char* argv[]);
 void verifyCRTVal(char* argv[]);
 void verifySetVal(char* argv[]);
+void verifyDelKey(char* argv[]);
+void verifyDelVal(char* argv[]);
 void printIndent(int level);
 string valueTypeToString(DWORD valueType);
 DWORD stringToValueType(const string& valueTypeString);
@@ -52,18 +55,7 @@ int main(int argc, char* argv[])
             cout << "Numar argumente invalid";
         }
     }
-    else if (strcmp(argv[1], "-r") == 0)
-    {
-        if (argc == 3)
-        {
-            //verifyCH(argv);
-        }
-        else
-        {
-            cout << "Numar argumente invalid";
-        }
-    }
-    else if (strcmp(argv[1], "-crt") == 0)
+    else if (strcmp(argv[1], "-crtkey") == 0)
     {
         if (argc == 4)
         {
@@ -95,6 +87,29 @@ int main(int argc, char* argv[])
         {
             cout << "Numar argumente invalid";
         }
+
+    }
+    else if (strcmp(argv[1], "-delkey") == 0)
+    {
+        if (argc == 4)
+        {
+            verifyDelKey(argv);
+        }
+        else
+        {
+            cout << "Numar argumente invalid";
+        }
+    }
+    else if (strcmp(argv[1], "-delval") == 0)
+    {
+        if (argc == 5)
+        {
+            verifyDelVal(argv);
+        }
+        else
+        {
+            cout << "Numar argumente invalid";
+        }
     }
     else if (strcmp(argv[1], "-help") == 0)
     {
@@ -121,7 +136,7 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
+void displayKeysAndvalues(HKEY hKey, const string& subKey, int level = 0)
 {
     HKEY hSubKey;
     DWORD errorCode = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
@@ -187,7 +202,7 @@ void displayRegistry(HKEY hKey, const string& subKey, int level = 0)
             }
             RegCloseKey(hNextSubKey);
 
-            displayRegistry(hKey, nextSubKey, level + 1);
+            displayKeysAndvalues(hKey, nextSubKey, level + 1);
         }
     }
     else if (valueCount > 0)
@@ -382,77 +397,133 @@ void createRegistryValue(HKEY hKey, const string& subKey, const string& valueNam
 
 void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,const BYTE* valueData, DWORD valueDataSize)
 {
-    // Open the registry key for modification
-    HKEY hSubKey;
-    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE, &hSubKey) != ERROR_SUCCESS)
+    // Open the registry key for modification in the 32-bit view
+    HKEY hSubKey32;
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE | KEY_WOW64_32KEY, &hSubKey32) != ERROR_SUCCESS)
     {
-        cerr << "Error opening registry key for modification!" << endl;
+        cerr << "Error opening registry key for modification (32-bit view)!" << endl;
         return;
     }
 
-    // Modify the value in the registry key
-    if (RegSetValueExA(hSubKey, valueName.c_str(), 0, valueType, valueData, valueDataSize) != ERROR_SUCCESS)
+    // Modify the value in the registry key (32-bit view)
+    if (RegSetValueExA(hSubKey32, valueName.c_str(), 0, valueType, valueData, valueDataSize) != ERROR_SUCCESS)
     {
-        cerr << "Error modifying registry value!" << endl;
-        RegCloseKey(hSubKey);
+        cerr << "Error modifying registry value (32-bit view)!" << endl;
+        RegCloseKey(hSubKey32);
         return;
     }
 
-    cout << "Value modified successfully!" << endl;
+    cout << "Value modified successfully (32-bit view)!" << endl;
 
-    // Close the registry key
-    RegCloseKey(hSubKey);
+    // Close the registry key (32-bit view)
+    RegCloseKey(hSubKey32);
+
+    // Open the registry key for modification in the 64-bit view
+    HKEY hSubKey64;
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE | KEY_WOW64_64KEY, &hSubKey64) != ERROR_SUCCESS)
+    {
+        cerr << "Error opening registry key for modification (64-bit view)!" << endl;
+        return;
+    }
+
+    // Modify the value in the registry key (64-bit view)
+    if (RegSetValueExA(hSubKey64, valueName.c_str(), 0, valueType, valueData, valueDataSize) != ERROR_SUCCESS)
+    {
+        cerr << "Error modifying registry value (64-bit view)!" << endl;
+        RegCloseKey(hSubKey64);
+        return;
+    }
+
+    cout << "Value modified successfully (64-bit view)!" << endl;
+
+    // Close the registry key (64-bit view)
+    RegCloseKey(hSubKey64);
 }
 
-bool resetRegistryKey(HKEY hKey, const string& subKey, const string& valueName = "")
+void deleteRegistryKey(HKEY hKey, const string& subKey)
 {
-    // Open the registry key for resetting
-    HKEY hSubKey;
-    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE, &hSubKey) != ERROR_SUCCESS)
+    // Open the registry key in the 32-bit view
+    HKEY hSubKey32;
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_ALL_ACCESS | KEY_WOW64_32KEY, &hSubKey32) != ERROR_SUCCESS)
     {
-        cerr << "Error opening registry key for resetting!" << endl;
-        return false;
+        cerr << "Error opening registry key (32-bit view)! Error code: " << GetLastError() << endl;
+        return;
     }
 
-    // Reset a specific value
-    if (!valueName.empty())
+    // Delete the subkey in the 32-bit view
+    LONG result32 = RegDeleteKeyA(hSubKey32, "");
+    if (result32 != ERROR_SUCCESS)
     {
-        if (RegDeleteValueA(hSubKey, valueName.c_str()) != ERROR_SUCCESS)
-        {
-            cerr << "Error resetting registry value!" << endl;
-            RegCloseKey(hSubKey);
-            return false;
-        }
+        cerr << "Error deleting registry key (32-bit view)! Error code: " << result32 << endl;
+        RegCloseKey(hSubKey32);
+        return;
     }
-    // Reset all values within the subkey
+
+    cout << "Registry key deleted successfully (32-bit view)!" << endl;
+
+    // Close the registry key in the 32-bit view
+    RegCloseKey(hSubKey32);
+
+    // Open the registry key in the 64-bit view
+    HKEY hSubKey64;
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_ALL_ACCESS | KEY_WOW64_64KEY, &hSubKey64) != ERROR_SUCCESS)
+    {
+        cerr << "Error opening registry key (64-bit view)! Error code: " << GetLastError() << endl;
+        return;
+    }
+
+    // Delete the subkey in the 64-bit view
+    LONG result64 = RegDeleteKeyA(hSubKey64, "");
+    if (result64 != ERROR_SUCCESS)
+    {
+        cerr << "Error deleting registry key (64-bit view)! Error code: " << result64 << endl;
+        RegCloseKey(hSubKey64);
+        return;
+    }
+
+    cout << "Registry key deleted successfully (64-bit view)!" << endl;
+
+    // Close the registry key in the 64-bit view
+    RegCloseKey(hSubKey64);
+}
+
+void deleteRegistryValue(HKEY hKey, const string& subKey, const string& valueName)
+{
+    HKEY hSubKey32;
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE | KEY_WOW64_32KEY, &hSubKey32) == ERROR_SUCCESS)
+    {
+        if (RegDeleteValueA(hSubKey32, valueName.c_str()) == ERROR_SUCCESS)
+        {
+            cout << "Registry value deleted successfully (32-bit view)!" << endl;
+        }
+        else
+        {
+            cerr << "Error deleting registry value (32-bit view)! Error code: " << GetLastError() << endl;
+        }
+        RegCloseKey(hSubKey32);
+    }
     else
     {
-        DWORD valueIndex = 0;
-        char valueNameBuffer[256];
-        DWORD valueNameSize = sizeof(valueNameBuffer);
-
-        // Enumerate all values and delete them
-        while (RegEnumValueA(hSubKey, valueIndex, valueNameBuffer, &valueNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
-        {
-            if (RegDeleteValueA(hSubKey, valueNameBuffer) != ERROR_SUCCESS)
-            {
-                cerr << "Error resetting registry value!" << endl;
-                RegCloseKey(hSubKey);
-                return false;
-            }
-
-            // Reset value index and buffer size for next iteration
-            valueIndex++;
-            valueNameSize = sizeof(valueNameBuffer);
-        }
+        cerr << "Error opening registry key (32-bit view)! Error code: " << GetLastError() << endl;
     }
 
-    cout << "Registry value(s) reset successfully!" << endl;
-
-    // Close the registry key
-    RegCloseKey(hSubKey);
-
-    return true;
+    HKEY hSubKey64;
+    if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE | KEY_WOW64_64KEY, &hSubKey64) == ERROR_SUCCESS)
+    {
+        if (RegDeleteValueA(hSubKey64, valueName.c_str()) == ERROR_SUCCESS)
+        {
+            cout << "Registry value deleted successfully (64-bit view)!" << endl;
+        }
+        else
+        {
+            cerr << "Error deleting registry value (64-bit view)! Error code: " << GetLastError() << endl;
+        }
+        RegCloseKey(hSubKey64);
+    }
+    else
+    {
+        cerr << "Error opening registry key (64-bit view)! Error code: " << GetLastError() << endl;
+    }
 }
 
 bool registryKeyExists(HKEY hKey, const string& subKey)
@@ -501,7 +572,7 @@ void verifyL(char* argv[])
     }
 
     if (registryKeyExists(verifKey, argv[3]) == true) {
-        displayRegistry(verifKey, argv[3]);
+        displayKeysAndvalues(verifKey, argv[3]);
     }
     else {
         cout << "The registry does not exist";
@@ -614,6 +685,86 @@ void verifySetVal(char* argv[])
 
     if (registryKeyExists(verifKey, argv[3]) == true) {
         setRegistryValue(verifKey, argv[3], argv[4], stringToValueType(argv[5]), reinterpret_cast<const BYTE*>(&argv[6]), sizeof(argv[6]));
+    }
+    else {
+        cout << "The registry does not exist";
+    }
+}
+
+void verifyDelKey(char* argv[])
+{
+    HKEY verifKey;
+
+    if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
+    {
+        verifKey = HKEY_CLASSES_ROOT;
+    }
+    else if (strcmp(argv[2], "HKEY_CURRENT_USER") == 0)
+    {
+
+        verifKey = HKEY_CURRENT_USER;
+    }
+    else if (strcmp(argv[2], "HKEY_LOCAL_MACHINE") == 0)
+    {
+
+        verifKey = HKEY_LOCAL_MACHINE;
+    }
+    else if (strcmp(argv[2], "HKEY_USERS") == 0)
+    {
+
+        verifKey = HKEY_USERS;
+    }
+    else if (strcmp(argv[2], "HKEY_CURRENT_CONFIG") == 0)
+    {
+
+        verifKey = HKEY_CURRENT_CONFIG;
+    }
+    else {
+        cout << "The registry does not exist";
+    }
+
+    if (registryKeyExists(verifKey, argv[3]) == true) {
+        deleteRegistryKey(verifKey, argv[3]);
+    }
+    else {
+        cout << "The registry does not exist";
+    }
+}
+
+void verifyDelVal(char* argv[])
+{
+    HKEY verifKey;
+
+    if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
+    {
+        verifKey = HKEY_CLASSES_ROOT;
+    }
+    else if (strcmp(argv[2], "HKEY_CURRENT_USER") == 0)
+    {
+
+        verifKey = HKEY_CURRENT_USER;
+    }
+    else if (strcmp(argv[2], "HKEY_LOCAL_MACHINE") == 0)
+    {
+
+        verifKey = HKEY_LOCAL_MACHINE;
+    }
+    else if (strcmp(argv[2], "HKEY_USERS") == 0)
+    {
+
+        verifKey = HKEY_USERS;
+    }
+    else if (strcmp(argv[2], "HKEY_CURRENT_CONFIG") == 0)
+    {
+
+        verifKey = HKEY_CURRENT_CONFIG;
+    }
+    else {
+        cout << "The registry does not exist";
+    }
+
+    if (registryKeyExists(verifKey, argv[3]) == true) {
+        deleteRegistryValue(verifKey, argv[3],argv[4]);
     }
     else {
         cout << "The registry does not exist";
