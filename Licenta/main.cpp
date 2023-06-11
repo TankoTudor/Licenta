@@ -8,6 +8,7 @@
 #include <vector>
 #include <omp.h>
 #include <winreg.h>
+#include <ctime>
 
 using namespace std;
 
@@ -153,65 +154,29 @@ void displayKeysAndvalues(HKEY hKey, const string& subKey, int level = 0)
 
     if (RegQueryInfoKeyA(hSubKey, NULL, NULL, NULL, &subkeyCount, NULL, NULL, &valueCount, &maxValueNameLength, &maxValueDataLength, NULL, NULL) != ERROR_SUCCESS)
     {
-        cerr << "Error retrieving key information!" << endl;
+        cerr << "Error retrieving key information! Error code: " << errorCode << endl;
         RegCloseKey(hSubKey);
         return;
     }
 
-    char* valueName = new char[maxValueNameLength + 1];
+    const DWORD bufferSize = 256;
+    char* valueName = new char[bufferSize];
     BYTE* valueData = new BYTE[maxValueDataLength];
     DWORD valueNameLength;
     DWORD valueDataLength;
     DWORD valueType;
 
-    cout << "---------------------------------------------------" << endl;
+    cout << "--------" << endl;
     cout << "Subkey: " << subKey << endl;
     cout << "Subkeys: " << subkeyCount << " Values: " << valueCount << endl;
 
-    if (subkeyCount > 0)
-    {
-        cout << "---------------------------------------------------" << endl;
-        cout << "Subkeys:" << endl;
-
-        for (DWORD i = 0; i < subkeyCount; i++)
-        {
-            valueNameLength = maxValueNameLength + 1;
-
-            if (i >= subkeyCount)
-            {
-                cerr << "Subkey index out of bounds!" << endl;
-                continue;
-            }
-
-            if (RegEnumKeyExA(hSubKey, i, valueName, &valueNameLength, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
-            {
-                cerr << "Error retrieving subkey with index " << i << "!" << endl;
-                continue;
-            }
-
-            string subkeyName(valueName);
-            string nextSubKey = subKey + "\\" + subkeyName;
-
-            // Verifică dacă subcheia curentă există în registru
-            HKEY hNextSubKey;
-            DWORD subKeyErrorCode = RegOpenKeyExA(hKey, nextSubKey.c_str(), 0, KEY_READ, &hNextSubKey);
-            if (subKeyErrorCode != ERROR_SUCCESS)
-            {
-                cerr << "Error opening subkey: " << nextSubKey << " Error code: " << subKeyErrorCode << endl;
-                continue;
-            }
-            RegCloseKey(hNextSubKey);
-
-            displayKeysAndvalues(hKey, nextSubKey, level + 1);
-        }
-    }
-    else if (valueCount > 0)
+    if (valueCount > 0)
     {
         cout << "Values:" << endl;
 
         for (DWORD i = 0; i < valueCount; i++)
         {
-            valueNameLength = maxValueNameLength + 1;
+            valueNameLength = bufferSize;
             valueDataLength = maxValueDataLength;
 
             if (i >= valueCount)
@@ -287,6 +252,41 @@ void displayKeysAndvalues(HKEY hKey, const string& subKey, int level = 0)
                 }
                 cout << endl;
             }
+        }
+    }
+
+    if (subkeyCount > 0)
+    {
+        for (DWORD i = 0; i < subkeyCount; i++)
+        {
+            valueNameLength = bufferSize;
+
+            if (i >= subkeyCount)
+            {
+                cerr << "Subkey index out of bounds!" << endl;
+                continue;
+            }
+
+            if (RegEnumKeyExA(hSubKey, i, valueName, &valueNameLength, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+            {
+                cerr << "Error retrieving subkey with index " << i << " " << subKey << "!" << endl;
+                continue;
+            }
+
+            string subkeyName(valueName);
+            string nextSubKey = subKey + "\\" + subkeyName;
+
+            // Check if the retrieved value is a subkey
+            HKEY hNextSubKey;
+            DWORD subKeyErrorCode = RegOpenKeyExA(hKey, nextSubKey.c_str(), 0, KEY_READ, &hNextSubKey);
+            if (subKeyErrorCode == ERROR_SUCCESS)
+            {
+                cout << "Keys: " << subkeyName << endl;
+                RegCloseKey(hNextSubKey);
+                displayKeysAndvalues(hKey, nextSubKey, level + 1);
+
+            }
+
         }
     }
 
