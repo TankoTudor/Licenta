@@ -1,6 +1,8 @@
-﻿#include <iostream>
+﻿#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
 #include <Windows.h>
 #include <string>
+#include <sstream>
 #include <cstring>
 #include <iomanip>
 #include <algorithm>
@@ -20,25 +22,31 @@ using namespace std;
 #define KEY_WOW64_64KEY 0x0100
 #endif
 
-void displayKeysAndvalues(HKEY hKey, const string& subKey, int level);
-void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, BYTE* valueData, DWORD valueDataSize);
-bool registryKeyExists(HKEY hKey, const string& subKey);
-void createRegistryKey(HKEY hKey, const string& subKey);
-void createRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, const string& valueData);
-void deleteRegistryKey(HKEY hKey, const string& subKey);
-void deleteRegistryValue(HKEY hKey, const string& subKey, const string& valueName);
-void verifyL(char* argv[]);
-void verifyCRTKey(char* argv[]);
-void verifyCRTVal(char* argv[]);
-void verifySetVal(char* argv[]);
-void verifyDelKey(char* argv[]);
-void verifyDelVal(char* argv[]);
+void displayKeysAndvalues(HKEY hKey, const string &subKey, int level);
+void setRegistryValue(HKEY hKey, const string &subKey, const string &valueName, DWORD valueType, BYTE *valueData, DWORD valueDataSize);
+bool registryKeyExists(HKEY hKey, const string &subKey);
+void createRegistryKey(HKEY hKey, const string &subKey);
+void createRegistryValue(HKEY hKey, const string &subKey, const string &valueName, DWORD valueType, const string &valueData);
+void deleteRegistryKey(HKEY hKey, const string &subKey);
+void deleteRegistryValue(HKEY hKey, const string &subKey, const string &valueName);
+void backupRegistryKeyRecursive(HKEY hKey, const string& subKey, const string& backupFolderPath);
+void backupRegistry(HKEY hKey, const string& subKey, const string& backupFolderPath);
+void createBackupFolder(const string& backupFolderPath);
+string generateBackupFileName();
+bool directoryExists(const string& path);
+void verifyL(char *argv[]);
+void verifyCRTKey(char *argv[]);
+void verifyCRTVal(char *argv[]);
+void verifySetVal(char *argv[]);
+void verifyDelKey(char *argv[]);
+void verifyDelVal(char *argv[]);
+void verifyBackup(char* argv[]);
 void printIndent(int level);
 string valueTypeToString(DWORD valueType);
-DWORD stringToValueType(const string& valueTypeString);
-string readFile(const string& fileName);
+DWORD stringToValueType(const string &valueTypeString);
+string readFile(const string &fileName);
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
@@ -88,7 +96,6 @@ int main(int argc, char* argv[])
         {
             cout << "Numar argumente invalid";
         }
-
     }
     else if (strcmp(argv[1], "-delkey") == 0)
     {
@@ -130,14 +137,25 @@ int main(int argc, char* argv[])
             cout << "File doesn't exist!";
         }
     }
+    else if (strcmp(argv[1], "-bckup") == 0)
+    {
+      if (argc == 5)
+      {
+        verifyBackup(argv);
+      }
+      else
+      {
+        cout << "Numar argumente invalid";
+      }
+    }
     else
     {
-        cout << "Invalid argument";
+        cout << "Argumente Invalide";
     }
     return 0;
 }
 
-void displayKeysAndvalues(HKEY hKey, const string& subKey, int level = 0)
+void displayKeysAndvalues(HKEY hKey, const string &subKey, int level = 0)
 {
     HKEY hSubKey;
     DWORD errorCode = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
@@ -160,8 +178,8 @@ void displayKeysAndvalues(HKEY hKey, const string& subKey, int level = 0)
     }
 
     const DWORD bufferSize = 256;
-    char* valueName = new char[bufferSize];
-    BYTE* valueData = new BYTE[maxValueDataLength];
+    char *valueName = new char[bufferSize];
+    BYTE *valueData = new BYTE[maxValueDataLength];
     DWORD valueNameLength;
     DWORD valueDataLength;
     DWORD valueType;
@@ -284,9 +302,7 @@ void displayKeysAndvalues(HKEY hKey, const string& subKey, int level = 0)
                 cout << "Keys: " << subkeyName << endl;
                 RegCloseKey(hNextSubKey);
                 displayKeysAndvalues(hKey, nextSubKey, level + 1);
-
             }
-
         }
     }
 
@@ -295,7 +311,7 @@ void displayKeysAndvalues(HKEY hKey, const string& subKey, int level = 0)
     RegCloseKey(hSubKey);
 }
 
-void createRegistryKey(HKEY hKey, const string& subKey)
+void createRegistryKey(HKEY hKey, const string &subKey)
 {
     HKEY hKey32, hKey64;
     DWORD dwDisposition;
@@ -315,7 +331,7 @@ void createRegistryKey(HKEY hKey, const string& subKey)
     }
 }
 
-void createRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType, const string& valueData)
+void createRegistryValue(HKEY hKey, const string &subKey, const string &valueName, DWORD valueType, const string &valueData)
 {
     HKEY hKey32, hKey64;
     DWORD dwDisposition;
@@ -331,7 +347,7 @@ void createRegistryValue(HKEY hKey, const string& subKey, const string& valueNam
         if (valueType == REG_SZ || valueType == REG_EXPAND_SZ || valueType == REG_MULTI_SZ)
         {
             dataSize = valueData.length() + 1;
-            dataBuffer = reinterpret_cast<LPBYTE>(const_cast<char*>(valueData.c_str()));
+            dataBuffer = reinterpret_cast<LPBYTE>(const_cast<char *>(valueData.c_str()));
         }
         else if (valueType == REG_DWORD)
         {
@@ -342,7 +358,7 @@ void createRegistryValue(HKEY hKey, const string& subKey, const string& valueNam
                 dataSize = sizeof(DWORD);
                 dataBuffer = reinterpret_cast<LPBYTE>(&dwValueData);
             }
-            catch (const exception& e)
+            catch (const exception &e)
             {
                 cout << "Failed to convert valueData to DWORD: " << e.what() << endl;
                 RegCloseKey(hKey32);
@@ -395,7 +411,7 @@ void createRegistryValue(HKEY hKey, const string& subKey, const string& valueNam
     }
 }
 
-void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, DWORD valueType,const BYTE* valueData, DWORD valueDataSize)
+void setRegistryValue(HKEY hKey, const string &subKey, const string &valueName, DWORD valueType, const BYTE *valueData, DWORD valueDataSize)
 {
     // Open the registry key for modification in the 32-bit view
     HKEY hSubKey32;
@@ -440,7 +456,7 @@ void setRegistryValue(HKEY hKey, const string& subKey, const string& valueName, 
     RegCloseKey(hSubKey64);
 }
 
-void deleteRegistryKey(HKEY hKey, const string& subKey)
+void deleteRegistryKey(HKEY hKey, const string &subKey)
 {
     // Open the registry key in the 32-bit view
     HKEY hSubKey32;
@@ -487,7 +503,7 @@ void deleteRegistryKey(HKEY hKey, const string& subKey)
     RegCloseKey(hSubKey64);
 }
 
-void deleteRegistryValue(HKEY hKey, const string& subKey, const string& valueName)
+void deleteRegistryValue(HKEY hKey, const string &subKey, const string &valueName)
 {
     HKEY hSubKey32;
     if (RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_SET_VALUE | KEY_WOW64_32KEY, &hSubKey32) == ERROR_SUCCESS)
@@ -526,18 +542,18 @@ void deleteRegistryValue(HKEY hKey, const string& subKey, const string& valueNam
     }
 }
 
-bool registryKeyExists(HKEY hKey, const string& subKey)
+bool registryKeyExists(HKEY hKey, const string &subKey)
 {
     HKEY hSubKey;
     LONG result = RegOpenKeyExA(hKey, subKey.c_str(), 0, KEY_READ, &hSubKey);
     if (result == ERROR_SUCCESS)
     {
         RegCloseKey(hSubKey);
-        return true; 
+        return true;
     }
     else if (result == ERROR_FILE_NOT_FOUND)
     {
-        return false; 
+        return false;
     }
     else
     {
@@ -546,7 +562,129 @@ bool registryKeyExists(HKEY hKey, const string& subKey)
     }
 }
 
-void verifyL(char* argv[])
+void backupRegistryKeyRecursive(HKEY hKey, const string& subKey, const string& backupFolderPath)
+{
+  // Generate the backup file name
+  string backupFileName = generateBackupFileName();
+
+  // Create the full backup file path
+  string backupFilePath = backupFolderPath + "\\" + backupFileName;
+
+  // Output the backup file path for debugging
+  cout << "Backup file path: " << backupFilePath << endl;
+
+  // Verify if the backup folder exists
+  if (!directoryExists(backupFolderPath))
+  {
+    cout << "Backup folder does not exist: " << backupFolderPath << endl;
+    return;
+  }
+
+  // Create the backup file
+  LONG result = RegSaveKeyA(hKey, backupFilePath.c_str(), nullptr);
+  if (result != ERROR_SUCCESS)
+  {
+    // Get the error message
+    LPSTR errorMessage = nullptr;
+    FormatMessageA(
+      FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+      nullptr,
+      result,
+      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+      reinterpret_cast<LPSTR>(&errorMessage),
+      0,
+      nullptr
+    );
+
+    // Output the error message
+    cout << "Failed to create backup file for key: " << subKey << ". Error code: " << result << endl;
+    if (errorMessage != nullptr)
+    {
+      cout << "Error message: " << errorMessage << endl;
+      LocalFree(errorMessage);
+    }
+
+    return;
+  }
+
+  cout << "Backup created for key: " << subKey << endl;
+
+  // Enumerate subkeys
+  DWORD subkeyIndex = 0;
+  CHAR subkeyName[MAX_PATH];
+  while (RegEnumKeyA(hKey, subkeyIndex, subkeyName, MAX_PATH) == ERROR_SUCCESS)
+  {
+    // Open subkey
+    HKEY subkey;
+    if (RegOpenKeyExA(hKey, subkeyName, 0, KEY_READ, &subkey) == ERROR_SUCCESS)
+    {
+      // Backup subkey recursively
+      string subkeyPath = subKey.empty() ? subkeyName : subKey + "\\" + subkeyName;
+      backupRegistryKeyRecursive(subkey, subkeyPath, backupFolderPath);
+
+      // Close subkey
+      RegCloseKey(subkey);
+    }
+
+    subkeyIndex++;
+  }
+}
+
+void backupRegistry(HKEY hKey, const string& subKey, const string& backupFolderPath)
+{
+
+  createBackupFolder(backupFolderPath);
+
+  // Open the root key
+  HKEY hSubKey;
+  LONG result = RegOpenKeyExA(hKey, nullptr, 0, KEY_READ, &hSubKey);
+  if (result != ERROR_SUCCESS)
+  {
+    cout << "Failed to open root registry key. Error code: " << result << endl;
+    return;
+  }
+  else 
+  {
+    // Backup recursively
+    backupRegistryKeyRecursive(hKey, subKey, backupFolderPath);
+
+    // Close the root key
+    RegCloseKey(hSubKey);
+
+    cout << "Registry backup created successfully." << endl;
+  }
+}
+
+void createBackupFolder(const string& backupFolderPath)
+{
+  if (!CreateDirectoryA(backupFolderPath.c_str(), nullptr))
+  {
+    DWORD error = GetLastError();
+    if (error != ERROR_ALREADY_EXISTS)
+    {
+      cout << "Failed to create backup folder: " << backupFolderPath << ". Error code: " << error << endl;
+    }
+  }
+}
+
+string generateBackupFileName()
+{
+  time_t t = time(nullptr);
+  tm* now = localtime(&t);
+
+  stringstream ss;
+  ss << "Backup" << "_" << put_time(now, "%Y%m%d%H%M%S") << ".reg";
+
+  return ss.str();
+}
+
+bool directoryExists(const string& path)
+{
+  DWORD attributes = GetFileAttributesA(path.c_str());
+  return (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+void verifyL(char *argv[])
 {
     HKEY verifKey;
 
@@ -571,15 +709,17 @@ void verifyL(char* argv[])
         verifKey = HKEY_CURRENT_CONFIG;
     }
 
-    if (registryKeyExists(verifKey, argv[3]) == true) {
+    if (registryKeyExists(verifKey, argv[3]) == true)
+    {
         displayKeysAndvalues(verifKey, argv[3]);
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
 }
 
-void verifyCRTKey(char* argv[]) 
+void verifyCRTKey(char *argv[])
 {
     HKEY verifKey;
 
@@ -608,14 +748,15 @@ void verifyCRTKey(char* argv[])
 
         verifKey = HKEY_CURRENT_CONFIG;
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
 
-    createRegistryKey(verifKey,argv[3]);
+    createRegistryKey(verifKey, argv[3]);
 }
 
-void verifyCRTVal(char* argv[])
+void verifyCRTVal(char *argv[])
 {
     HKEY verifKey;
 
@@ -644,13 +785,14 @@ void verifyCRTVal(char* argv[])
 
         verifKey = HKEY_CURRENT_CONFIG;
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
     createRegistryValue(verifKey, argv[3], argv[4], stringToValueType(argv[5]), argv[6]);
 }
 
-void verifySetVal(char* argv[])
+void verifySetVal(char *argv[])
 {
     HKEY verifKey;
 
@@ -679,19 +821,22 @@ void verifySetVal(char* argv[])
 
         verifKey = HKEY_CURRENT_CONFIG;
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
 
-    if (registryKeyExists(verifKey, argv[3]) == true) {
-        setRegistryValue(verifKey, argv[3], argv[4], stringToValueType(argv[5]), reinterpret_cast<const BYTE*>(&argv[6]), sizeof(argv[6]));
+    if (registryKeyExists(verifKey, argv[3]) == true)
+    {
+        setRegistryValue(verifKey, argv[3], argv[4], stringToValueType(argv[5]), reinterpret_cast<const BYTE *>(&argv[6]), sizeof(argv[6]));
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
 }
 
-void verifyDelKey(char* argv[])
+void verifyDelKey(char *argv[])
 {
     HKEY verifKey;
 
@@ -719,19 +864,22 @@ void verifyDelKey(char* argv[])
 
         verifKey = HKEY_CURRENT_CONFIG;
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
 
-    if (registryKeyExists(verifKey, argv[3]) == true) {
+    if (registryKeyExists(verifKey, argv[3]) == true)
+    {
         deleteRegistryKey(verifKey, argv[3]);
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
 }
 
-void verifyDelVal(char* argv[])
+void verifyDelVal(char *argv[])
 {
     HKEY verifKey;
 
@@ -759,16 +907,57 @@ void verifyDelVal(char* argv[])
 
         verifKey = HKEY_CURRENT_CONFIG;
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
 
-    if (registryKeyExists(verifKey, argv[3]) == true) {
-        deleteRegistryValue(verifKey, argv[3],argv[4]);
+    if (registryKeyExists(verifKey, argv[3]) == true)
+    {
+        deleteRegistryValue(verifKey, argv[3], argv[4]);
     }
-    else {
+    else
+    {
         cout << "The registry does not exist";
     }
+}
+
+void verifyBackup(char* argv[]) 
+{
+  HKEY verifKey;
+
+  if (strcmp(argv[2], "HKEY_CLASSES_ROOT") == 0)
+  {
+    verifKey = HKEY_CLASSES_ROOT;
+  }
+  else if (strcmp(argv[2], "HKEY_CURRENT_USER") == 0)
+  {
+
+    verifKey = HKEY_CURRENT_USER;
+  }
+  else if (strcmp(argv[2], "HKEY_LOCAL_MACHINE") == 0)
+  {
+
+    verifKey = HKEY_LOCAL_MACHINE;
+  }
+  else if (strcmp(argv[2], "HKEY_USERS") == 0)
+  {
+
+    verifKey = HKEY_USERS;
+  }
+  else if (strcmp(argv[2], "HKEY_CURRENT_CONFIG") == 0)
+  {
+
+    verifKey = HKEY_CURRENT_CONFIG;
+  }
+  else
+  {
+    cout << "The registry does not exist";
+  }
+
+  backupRegistry(verifKey, argv[3], argv[4]);
+ 
+
 }
 
 void printIndent(int level)
@@ -812,7 +1001,7 @@ string valueTypeToString(DWORD valueType)
     }
 }
 
-DWORD stringToValueType(const string& valueTypeString)
+DWORD stringToValueType(const string &valueTypeString)
 {
     if (valueTypeString == "REG_NONE")
         return REG_NONE;
@@ -842,7 +1031,7 @@ DWORD stringToValueType(const string& valueTypeString)
         return 0; // Unknown type, return a default value
 }
 
-string readFile(const string& fileName)
+string readFile(const string &fileName)
 {
     ifstream inputFile(fileName);
     string fileContent;
@@ -863,3 +1052,4 @@ string readFile(const string& fileName)
 
     return fileContent;
 }
+
