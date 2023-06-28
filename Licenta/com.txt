@@ -1,0 +1,1 @@
+-bckup HKEY_LOCAL_MACHINE C:\Tudor\Test\backup1.reg
